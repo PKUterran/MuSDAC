@@ -4,14 +4,43 @@ from .layers import *
 from .config import *
 
 
+class WeightedSummation(Module):
+    def __init__(self, n_channel: int, requires_grad=True, restriction=F.softmax):
+        super(WeightedSummation, self).__init__()
+        self.theta = Parameter(torch.full([1, 1, n_channel], 0, dtype=torch.float32))
+        if not requires_grad:
+            self.theta.requires_grad_(False)
+        self.restriction = restriction
+
+    def forward(self, x: torch.FloatTensor):
+        assert self.theta.shape[2] == x.shape[1], 'Wrong input shape: x {}'.format(x.shape)
+        return torch.squeeze(torch.matmul(self.restriction(self.theta, dim=2), x), dim=1)
+
+
+class AttentionSummation(Module):
+    def __init__(self, n_channel: int, emb_dim: int):
+        super(AttentionSummation, self).__init__()
+        self.theta = torch.full([1, 1, n_channel], 1 / n_channel, dtype=torch.float32)
+        self.w_omega = Parameter(torch.normal(torch.full([emb_dim, emb_dim], 0.), 0.1))
+        self.b_omega = Parameter(torch.normal(torch.full([emb_dim], 0.), 0.1))
+        self.u_omega = Parameter(torch.normal(torch.full([emb_dim], 0.), 0.1))
+
+    def forward(self, x: torch.FloatTensor):
+        assert self.theta.shape[2] == x.shape[1], 'Wrong input shape: x {}'.format(x.shape)
+        return torch.squeeze(torch.matmul(self.theta, x), dim=1)
+
+    def calc_theta(self, xs: list):
+        inputs = torch.transpose(torch.stack(xs, dim=0), 0, 1)
+        v = torch.tanh(torch.tensordot(inputs, self.w_omega, dims=1) + self.b_omega)
+        vu = torch.tensordot(v, self.u_omega, dims=1)
+        alphas = F.softmax(vu, dim=1)
+        self.theta = torch.mean(alphas, dim=0).unsqueeze(0).unsqueeze(0)
+
+
 class MuCDAC(Module):
-    def __init__(self, fea_dim: int, hid1_dim: int, hid2_dim: int, emb_dim: int, cls_dim: int, n_meta: int,
-                 avg=False, prob_mode=False, unique=False):
+    def __init__(self, fea_dim: int, hid1_dim: int, hid2_dim: int, emb_dim: int, cls_dim: int, n_meta: int, cu='cu'):
         super(MuCDAC, self).__init__()
-        if prob_mode:
-            avg = True
         self.n_meta = n_meta
-        self.prob_mode = prob_mode
         self.adjs = []
         self.gc1s = []
         self.gc2s = []
@@ -21,23 +50,23 @@ class MuCDAC(Module):
             self.gc1s.append(gc1)
             self.gc2s.append(gc2)
 
-        if not unique:
+        if cu == 'cu':
             comps = self.compose(n_meta)
+        elif cu == 'c':
+            comps = self.compose(n_meta)[n_meta:]
         else:
             comps = [(i,) for i in range(n_meta)]
+        self.comps_num = len(comps)
         self.comp_ca_cls_list = []
         for comp in comps:
             ca = ChannelAggregation(hid2_dim, len(comp), emb_dim)
             cls = Classifier(emb_dim, cls_dim, drop=MuCDACConfig.CLSDrop)
             self.comp_ca_cls_list.append((comp, ca, cls))
 
-        self.weighted = WeightedSummation(len(comps), not avg)
-        for param in self.weighted.parameters():
-            self.register_parameter('weighted-{}'.format(param.name), param)
-        if prob_mode:
-            self.prob_cls = Classifier(len(comps) * cls_dim, cls_dim, drop=MuCDACConfig.CLSDrop)
-            for param in self.prob_cls.parameters():
-                self.register_parameter('prob_cls-{}'.format(param.name), param)
+        # if prob_mode:
+        #     self.prob_cls = Classifier(len(comps) * cls_dim, cls_dim, drop=MuCDACConfig.CLSDrop)
+        #     for param in self.prob_cls.parameters():
+        #         self.register_parameter('prob_cls-{}'.format(param.name), param)
         for i, param in enumerate(self.get_inner_parameters()):
             self.register_parameter(str(i), param)
 
@@ -58,21 +87,23 @@ class MuCDAC(Module):
             embeddings.append(embedding)
             predictions.append(prediction)
 
-        if self.prob_mode:
-            pred = self.prob_cls(torch.cat(predictions, dim=1))
-        else:
-            pred = self.weighted(torch.transpose(torch.stack(predictions), 0, 1))
-        return pred, embeddings, predictions
+        return embeddings, predictions
+        # if self.prob_mode:
+        #     pred = self.prob_cls(torch.cat(predictions, dim=1))
+        # else:
+        #     if self.attn:
+        #         self.weighted.calc_theta(embeddings)
+        #     pred = self.weighted(torch.transpose(torch.stack(predictions), 0, 1))
 
     def set_adjs(self, adjs: list):
         self.adjs = adjs
 
     def get_inner_parameters(self):
-        return reduce(lambda x, y: chain(x, y), [
+        return chain(
             reduce(lambda x, y: chain(x, y), map(lambda x: x.parameters(), self.gc1s)),
             reduce(lambda x, y: chain(x, y), map(lambda x: x.parameters(), self.gc2s)),
             reduce(lambda x, y: chain(x, y), map(lambda x: x[1].parameters(), self.comp_ca_cls_list)),
-            reduce(lambda x, y: chain(x, y), map(lambda x: x[2].parameters(), self.comp_ca_cls_list))])
+            reduce(lambda x, y: chain(x, y), map(lambda x: x[2].parameters(), self.comp_ca_cls_list)))
 
     @staticmethod
     def compose(num: int) -> list:

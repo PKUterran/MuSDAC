@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import json
 
-COLORS = ['red', 'green', 'orange', 'blue', 'pink', 'black']
+COLORS = ['red', 'orange', 'yellow', 'green', 'azure', 'blue', 'purple']
 
 
 def plt_tendency(res_file='result.txt', tag='', directory='temp/'):

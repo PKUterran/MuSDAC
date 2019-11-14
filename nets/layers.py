@@ -37,19 +37,6 @@ class Classifier(Module):
         return self.activation(self.linear(self.dropout(features)), dim=1)
 
 
-class WeightedSummation(Module):
-    def __init__(self, n_channel: int, requires_grad=True, restriction=F.softmax):
-        super(WeightedSummation, self).__init__()
-        self.theta = Parameter(torch.full([1, 1, n_channel], 0, dtype=torch.float32))
-        if not requires_grad:
-            self.theta.requires_grad_(False)
-        self.restriction = restriction
-
-    def forward(self, x: torch.FloatTensor):
-        assert self.theta.shape[2] == x.shape[1], 'Wrong input shape: x {}'.format(x.shape)
-        return torch.squeeze(torch.matmul(self.restriction(self.theta, dim=2), x), dim=1)
-
-
 class MaximumMeanDiscrepancy(Module):
     def __init__(self, kernel_mul=2.0, kernel_num=5):
         super(MaximumMeanDiscrepancy, self).__init__()
@@ -83,7 +70,8 @@ class MaximumMeanDiscrepancy(Module):
         YY = kernels[batch_size:, batch_size:]
         XY = kernels[:batch_size, batch_size:]
         YX = kernels[batch_size:, :batch_size]
-        loss = torch.mean(XX + YY - XY - YX)
+        loss = torch.mean(XX) + torch.mean(YY) - torch.mean(XY) - torch.mean(YX)
+        # loss = torch.mean(XX + YY - XY - YX)
         return loss
 
 
