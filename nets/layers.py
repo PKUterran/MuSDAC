@@ -35,6 +35,19 @@ class Classifier(Module):
 
     def forward(self, features):
         return self.activation(self.linear(self.dropout(features)), dim=1)
+        # return self.activation(self.linear2(self.linear(self.dropout(features))), dim=1)
+
+
+class MLP(Module):
+    def __init__(self, fea_dim: int, hid_dim: int, cls_dim: int, drop: float = 0.0, bias=False, activation=F.softmax):
+        super(MLP, self).__init__()
+        self.dropout = Dropout(drop)
+        self.linear = Linear(fea_dim, hid_dim, bias)
+        self.linear2 = Linear(hid_dim, cls_dim)
+        self.activation = activation
+
+    def forward(self, features):
+        return self.activation(self.linear2(self.linear(self.dropout(features))), dim=1)
 
 
 class MaximumMeanDiscrepancy(Module):

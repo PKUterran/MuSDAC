@@ -2,6 +2,7 @@ from functools import reduce
 from itertools import chain
 from .layers import *
 from .config import *
+from random import random, sample
 
 
 class WeightedSummation(Module):
@@ -54,8 +55,18 @@ class MuCDAC(Module):
             comps = self.compose(n_meta)
         elif cu == 'c':
             comps = self.compose(n_meta)[n_meta:]
-        else:
+        elif cu == 'u':
             comps = [(i,) for i in range(n_meta)]
+        elif cu == 'f':
+            comps = self.compose(n_meta)[-1:]
+        elif cu == 'urf':
+            comps = self.urf(n_meta)
+        elif cu == 'rdm':
+            comps = sample(self.compose(n_meta), 2 * n_meta - 1)
+        elif cu == 'alc':
+            comps = [tuple(range(n_meta))] * (2 * n_meta - 1)
+        else:
+            assert False, 'Wrong CU Mode: {}'.format(cu)
         self.comps_num = len(comps)
         self.comp_ca_cls_list = []
         for comp in comps:
@@ -63,10 +74,6 @@ class MuCDAC(Module):
             cls = Classifier(emb_dim, cls_dim, drop=MuCDACConfig.CLSDrop)
             self.comp_ca_cls_list.append((comp, ca, cls))
 
-        # if prob_mode:
-        #     self.prob_cls = Classifier(len(comps) * cls_dim, cls_dim, drop=MuCDACConfig.CLSDrop)
-        #     for param in self.prob_cls.parameters():
-        #         self.register_parameter('prob_cls-{}'.format(param.name), param)
         for i, param in enumerate(self.get_inner_parameters()):
             self.register_parameter(str(i), param)
 
@@ -115,6 +122,21 @@ class MuCDAC(Module):
             return [(0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)]
         else:
             assert False, 'Not supporting meta-path num >= {}.'.format(4)
+
+    @staticmethod
+    def urf(num: int) -> list:
+        if num == 1:
+            return [(0,)]
+        u = [(i,) for i in range(num)]
+        f = [tuple(range(num))]
+        r = []
+        for i in range(num - 2):
+            while True:
+                v = tuple([i for i in range(num) if random() < 0.5])
+                if 1 < len(v) < num and v not in r:
+                    break
+            r.append(v)
+        return u + r + f
 
     @staticmethod
     def select(array: list, elements: tuple) -> list:
