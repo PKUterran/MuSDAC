@@ -1,36 +1,14 @@
-import torch
-import torch.nn.functional as F
-from nets.models import MuCDAC
-from nets.layers import MaximumMeanDiscrepancy
-from utils.process import ConditionalMMD
-
-# src = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
-# tgt = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
-# labels = torch.tensor([0, 1], dtype=torch.int64)
-# logits = torch.tensor([[1.0, 0.0], [0.8, 0.2]])
-# print(torch.cat([src, tgt], dim=-1))
-# mmd = MaximumMeanDiscrepancy()
-# cmmd = ConditionalMMD(mmd)
-# print(mmd(src, tgt))
-# print(cmmd.calc_cmmd(src, tgt, labels, logits))
+import numpy as np
 
 
-from random import random
+def cos_dist(vec1, vec2):
+    """
+    :param vec1: 向量1
+    :param vec2: 向量2
+    :return: 返回两个向量的余弦相似度
+    """
+    dist1 = float(np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2)))
+    return dist1
 
 
-def uor(num: int) -> list:
-    if num == 1:
-        return [(0,)]
-    u = [(i,) for i in range(num)]
-    o = [tuple(range(num))]
-    r = []
-    for i in range(num - 2):
-        while True:
-            v = tuple([i for i in range(num) if random() < 0.5])
-            if 1 < len(v) < num and v not in r:
-                break
-        r.append(v)
-    return u + r + o
-
-
-print(uor(4))
+print(cos_dist([-1, -2, -3], [1, 2, 3]))

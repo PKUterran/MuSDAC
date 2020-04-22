@@ -1,8 +1,35 @@
+import torch
+import numpy as np
 from functools import reduce
 from itertools import chain
 from .layers import *
 from .config import *
 from random import random, sample
+from torch.nn import Sigmoid, Sequential, LeakyReLU, Parameter
+
+
+class SoftmaxWeightedAveraging(Module):
+    KEEP_RATE = 0.95
+    ETA = -25
+
+    def __init__(self, n_channel: int, moving: bool = False, avg: bool = False):
+        super(SoftmaxWeightedAveraging, self).__init__()
+        self.theta = np.array([[[1 / n_channel] * n_channel]])
+        self.moving = moving
+        self.avg = avg
+
+    def forward(self, x: torch.FloatTensor):
+        assert self.theta.shape[2] == x.shape[1], 'Wrong input shape: x {}'.format(x.shape)
+        return torch.squeeze(torch.matmul(torch.tensor(self.theta, dtype=torch.float32).cuda(), x), dim=1)
+
+    def update_theta(self, losses: list):
+        if self.avg:
+            return
+        new_theta = np.array([[(torch.stack(losses) * self.ETA).softmax(0).cpu().tolist()]])
+        if self.moving:
+            self.theta = self.KEEP_RATE * self.theta + (1 - self.KEEP_RATE) * new_theta
+        else:
+            self.theta = new_theta
 
 
 class WeightedSummation(Module):
@@ -32,6 +59,7 @@ class AttentionSummation(Module):
 
     def calc_theta(self, xs: list):
         inputs = torch.transpose(torch.stack(xs, dim=0), 0, 1)
+        inputs = inputs.detach()
         v = torch.tanh(torch.tensordot(inputs, self.w_omega, dims=1) + self.b_omega)
         vu = torch.tensordot(v, self.u_omega, dims=1)
         alphas = F.softmax(vu, dim=1)
@@ -58,13 +86,15 @@ class MuCDAC(Module):
         elif cu == 'u':
             comps = [(i,) for i in range(n_meta)]
         elif cu == 'f':
-            comps = self.compose(n_meta)[-1:]
+            comps = [tuple(range(n_meta))]
         elif cu == 'urf':
             comps = self.urf(n_meta)
         elif cu == 'rdm':
             comps = sample(self.compose(n_meta), 2 * n_meta - 1)
         elif cu == 'alc':
             comps = [tuple(range(n_meta))] * (2 * n_meta - 1)
+        elif isinstance(cu, list):
+            comps = cu
         else:
             assert False, 'Wrong CU Mode: {}'.format(cu)
         self.comps_num = len(comps)
@@ -144,3 +174,29 @@ class MuCDAC(Module):
         for i in elements:
             ret.append(array[i])
         return ret
+
+
+class Discriminator(Module):
+    def __init__(self, n_emb):
+        super(Discriminator, self).__init__()
+        self.emb_dim = n_emb
+        self.dis_layers = 2
+        self.dis_hid_dim = n_emb
+        self.dis_dropout = 0.1
+        self.dis_input_dropout = 0.5
+
+        layers = [Dropout(self.dis_input_dropout)]
+        for i in range(self.dis_layers + 1):
+            input_dim = self.emb_dim if i == 0 else self.dis_hid_dim
+            output_dim = 1 if i == self.dis_layers else self.dis_hid_dim
+            layers.append(Linear(input_dim, output_dim))
+            if i < self.dis_layers:
+                layers.append(LeakyReLU(0.2))
+                layers.append(Dropout(self.dis_dropout))
+        layers.append(Sigmoid())
+        self.layers = Sequential(*layers)
+
+    def forward(self, x):
+        # assert x.dim() == 2
+        # assert x.size(1) == self.emb_dim
+        return self.layers(x).view(-1)

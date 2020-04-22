@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch.nn import Module, Linear, Dropout, Conv1d, Parameter
+from torch.nn import Module, Linear, Dropout, Conv1d
 
 
 class GraphConvolution(Module):
