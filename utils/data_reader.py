@@ -1,8 +1,10 @@
 import math
+import os
 import torch
 import numpy as np
 import scipy.sparse as sp
 from sklearn import metrics
+from pathlib import Path
 
 
 def encode_onehot(labels):
@@ -78,3 +80,11 @@ def accuracy(output, labels):
 def macro_F1(output, labels):
     preds = output.max(1)[1].type_as(labels)
     return metrics.f1_score(labels, preds, average='macro')
+
+
+def verify_dir(path):
+    dir_path = Path(path)
+    if dir_path.exists() and dir_path.is_dir():
+        pass
+    else:
+        os.mkdir(path)

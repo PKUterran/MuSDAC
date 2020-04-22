@@ -4,17 +4,17 @@ import torch.nn.functional as F
 import argparse
 import json
 import math
-import numpy as np
 import random
+import numpy as np
 from itertools import chain
 from functools import reduce
 
 from nets.layers import MaximumMeanDiscrepancy
-from nets.models import MuCDAC, WeightedSummation, Discriminator
-from utils.data_reader import load_data
+from nets.models import MuSDAC, Discriminator, WeightedSummation
+from utils.data_reader import load_data, verify_dir
 from utils.tendency import plt_tendency, plt_compare
 from utils.classifier import write_files, classify
-from utils.process import acc, ConditionalMMD
+from utils.process import acc
 
 # parser = argparse.ArgumentParser()
 # parser.parse_args()
@@ -77,7 +77,7 @@ def set_seed(seed: int):
 
 
 def eval_channel(mask: tuple, epochs=50, kernel_num=5) -> float:
-    model = MuCDAC(fea_dim, hid1_dim, hid2_dim, emb_dim, cls_dim, len(mask), 'f')
+    model = MuSDAC(fea_dim, hid1_dim, hid2_dim, emb_dim, cls_dim, len(mask), 'f')
     mmd = MaximumMeanDiscrepancy(kernel_num=kernel_num)
     optimizer = optim.Adam(model.parameters(), lr=eval_lr, weight_decay=eval_wc)
     if use_cuda:
@@ -112,7 +112,7 @@ def eval_channel(mask: tuple, epochs=50, kernel_num=5) -> float:
     return loss
 
 
-def heuristics_channel_combinations_selection(kernel_num=5) -> list:
+def heuristic_channel_combinations_selection(kernel_num=5) -> list:
     def binary(com: tuple) -> int:
         bi = 0
         for c in com:
@@ -158,13 +158,15 @@ def heuristics_channel_combinations_selection(kernel_num=5) -> list:
         queue = [bi for bi, _ in assess_loss[:n_meta - i - 1]]
 
     total_bi_loss = sorted(loss_map.items(), key=lambda x: x[1])
-    print(total_bi_loss)
+    print('Combination\tLoss:')
+    for bi, loss in total_bi_loss:
+        print('{}\t{:.3f}'.format(con_binary(bi), loss))
     total_com = [con_binary(bi) for bi, _ in total_bi_loss][:2 * n_meta - 1]
     return total_com
 
 
 def train(epochs=200, cu=None, tag='', directory='temp/', print_mode=False) -> str:
-    model = MuCDAC(fea_dim, hid1_dim, hid2_dim, emb_dim, cls_dim, n_meta, cu)
+    model = MuSDAC(fea_dim, hid1_dim, hid2_dim, emb_dim, cls_dim, n_meta, cu)
     discriminators = [Discriminator(emb_dim) for _ in range(model.comps_num)]
     summation = WeightedSummation(model.comps_num, False)
 
@@ -282,63 +284,9 @@ if __name__ == '__main__':
         for seed in seeds:
             print('----- for seed {} -----'.format(seed))
             set_seed(seed)
-            directory = 'temp/{}/'.format(seed)
-            # res_fus = train(tag='fus-am-ba', cu='f', avg=True, directory=directory)
-            # res_cod = train(tag='cod-am-ab', voting='cod', directory=directory)
-            # res_dic = train(tag='dic-am-ab', voting='dic', directory=directory)
-            # res_no_mmd = train(tag='no_mmd-dblp-ab', use_mmd=False, directory=directory)
-            # res_mmd = train(tag='mmd-am-ab', directory=directory)
+            directory = 'result/{}/'.format(seed)
+            verify_dir(directory[:-1])
 
-            # cod_ratio_ = 0.1
-            # res_cod = train(tag='urf-cod01-' + meta_tag, voting='cod', directory=directory, cu='urf', kernel_num=kn)
-            # cod_ratio_ = 1.0
-            # res_cod = train(tag='urf-cod1-' + meta_tag, voting='cod', directory=directory, cu='urf', kernel_num=kn)
-            # cod_ratio_ = 2.0
-            # res_cod = train(tag='urf-cod2-' + meta_tag, voting='cod', directory=directory, cu='urf', kernel_num=kn)
-            #
-            # mmd_ratio_ = 1
-            # res_mmd = train(tag='urf-mmd1-' + meta_tag, directory=directory, cu='urf', kernel_num=kn)
-            # mmd_ratio_ = 5
-            # res_mmd = train(tag='urf-mmd5-' + meta_tag, directory=directory, cu='urf', kernel_num=kn)
-            # mmd_ratio_ = 20
-            # res_mmd = train(tag='urf-mmd20-' + meta_tag, directory=directory, cu='urf', kernel_num=kn)
-
-            # res_urf = train(tag='urf-mmd-' + meta_tag, directory=directory, cu='urf', kernel_num=kn)
-            # res_rdm = train(tag='rdm-mmd-' + meta_tag, directory=directory, cu='rdm', kernel_num=kn)
-            # res_alc = train(tag='alc-mmd-' + meta_tag, directory=directory, cu='alc', kernel_num=kn)
-            hrs_cu = heuristics_channel_combinations_selection()
-            # cod_ratio_ = 0.1
-            # train(tag='hrs-cod01-' + meta_tag, voting='cod', directory=directory, cu=hrs_cu, kernel_num=kn)
-            # cod_ratio_ = 1.0
-            # train(tag='hrs-cod1-' + meta_tag, voting='cod', directory=directory, cu=hrs_cu, kernel_num=kn)
-            # cod_ratio_ = 2.0
-            # train(tag='hrs-cod2-' + meta_tag, voting='cod', directory=directory, cu=hrs_cu, kernel_num=kn)
-            # cod_ratio_ = 0.5
-            #
-            # mmd_ratio_ = 1
-            # train(tag='hrs-mmd1-' + meta_tag, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # mmd_ratio_ = 5
-            # train(tag='hrs-mmd5-' + meta_tag, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # mmd_ratio_ = 20
-            # train(tag='hrs-mmd20-' + meta_tag, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # mmd_ratio_ = 10
+            hrs_cu = heuristic_channel_combinations_selection()
 
             res_gan = train(tag='hrs-gan-' + meta_tag, directory=directory, cu=hrs_cu)
-
-            # res_hrs = train(tag='hrs-mmd-' + meta_tag, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # res_avg = train(tag='hrs-avg-' + meta_tag, avg=True, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # res_cod = train(tag='hrs-cod-' + meta_tag, voting='cod', directory=directory, cu=hrs_cu, kernel_num=kn)
-            # res_dic = train(tag='hrs-dic-' + meta_tag, voting='dic', directory=directory, cu=hrs_cu, kernel_num=kn)
-            # res_nom = train(tag='hrs-nom-' + meta_tag, use_mmd=False, directory=directory, cu=hrs_cu, kernel_num=kn)
-            # res_avg = train(tag='urf-avg-' + meta_tag, avg=True, directory=directory, cu='urf', kernel_num=kn)
-            # res_mmd = train(tag='urf-mmd-' + meta_tag, directory=directory, cu='urf', kernel_num=kn)
-            # res_cod = train(tag='urf-cod-' + meta_tag, voting='cod', directory=directory, cu='urf', kernel_num=kn)
-            # res_dic = train(tag='urf-dic-' + meta_tag, voting='dic', directory=directory, cu='urf', kernel_num=kn)
-            # res_nom = train(tag='urf-nom-' + meta_tag, use_mmd=False, directory=directory, cu='urf', kernel_num=kn)
-            # res_cmmd = train(tag='cmmd-acm-ab', conditional=True, directory=directory)
-            # res_avg = train(tag='avg-am-ab', avg=True, directory=directory)
-            # res_no_mmd_unique = train(tag='no_mmd_unique-acm-ab', use_mmd=False, cu='u', directory=directory)
-            # res_unique = train(tag='mmd_unique-dblp-ba', cu='u', directory=directory)
-            # res_common = train(tag='mmd_common-dblp-ba', cu='c', directory=directory)
-            # plt_compare([res_no_mmd, res_mmd, res_cmmd, res_avg, res_no_mmd_unique, res_unique, res_common],
-            #             tag='acm-ba', directory=directory)

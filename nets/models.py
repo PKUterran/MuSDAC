@@ -66,9 +66,9 @@ class AttentionSummation(Module):
         self.theta = torch.mean(alphas, dim=0).unsqueeze(0).unsqueeze(0)
 
 
-class MuCDAC(Module):
+class MuSDAC(Module):
     def __init__(self, fea_dim: int, hid1_dim: int, hid2_dim: int, emb_dim: int, cls_dim: int, n_meta: int, cu='cu'):
-        super(MuCDAC, self).__init__()
+        super(MuSDAC, self).__init__()
         self.n_meta = n_meta
         self.adjs = []
         self.gc1s = []
@@ -125,12 +125,6 @@ class MuCDAC(Module):
             predictions.append(prediction)
 
         return embeddings, predictions
-        # if self.prob_mode:
-        #     pred = self.prob_cls(torch.cat(predictions, dim=1))
-        # else:
-        #     if self.attn:
-        #         self.weighted.calc_theta(embeddings)
-        #     pred = self.weighted(torch.transpose(torch.stack(predictions), 0, 1))
 
     def set_adjs(self, adjs: list):
         self.adjs = adjs
