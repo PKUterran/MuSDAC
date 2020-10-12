@@ -1,5 +1,5 @@
 # MuSDAC
-Multi-Shannel Domain Adaptive Classification
+Multi-Space Domain Adaptive Classification
 
 The implementation of *Domain Adaptive Classification on Heterogeneous Information Networks* on **IJCAI-PRICAI 20**.
 
